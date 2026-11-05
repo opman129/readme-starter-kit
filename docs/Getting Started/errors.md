@@ -1,5 +1,5 @@
 ---
-title: Errors
+title: Errors and status codes
 deprecated: false
 hidden: false
 metadata:
