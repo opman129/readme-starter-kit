@@ -1,0 +1,1244 @@
+openapi: 3.0.3
+info:
+  title: Acme Payments API
+  version: 1.4.0
+  description: |
+    The Acme Payments API lets you charge cards, store customers and payment
+    methods, issue refunds, and subscribe to webhook events.
+
+    All requests are made over HTTPS and all request and response bodies are
+    JSON. Monetary amounts are always sent as an integer in the currency's
+    minor unit (for example, `2000` means $20.00 for `USD`) together with an
+    ISO 4217 currency code.
+
+    Use the sandbox server and test credentials while you build; no real money
+    moves until you switch to the production server with live keys.
+  termsOfService: https://docs.example-pay.com/terms
+  contact:
+    name: Acme Developer Support
+    url: https://docs.example-pay.com/support
+    email: api@example-pay.com
+  license:
+    name: Proprietary
+    url: https://docs.example-pay.com/license
+servers:
+  - url: https://api.example-pay.com/v1
+    description: Production
+  - url: https://sandbox.example-pay.com/v1
+    description: Sandbox (test mode)
+  - url: https://{region}.api.example-pay.com/v1
+    description: Regional production endpoint
+    variables:
+      region:
+        default: eu
+        enum:
+          - eu
+          - us
+          - ap
+        description: Data-residency region for the account.
+tags:
+  - name: Authentication
+    description: Exchange your client credentials for a short-lived access token.
+  - name: Customers
+    description: Create and manage the people and businesses you charge.
+  - name: Payments
+    description: Create, capture, retrieve, and list payments.
+  - name: Payment methods
+    description: Store and retrieve reusable cards and other payment methods.
+  - name: Refunds
+    description: Return funds from a captured payment.
+  - name: Webhook endpoints
+    description: Register URLs that receive event notifications.
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+paths:
+  /auth/token:
+    post:
+      tags:
+        - Authentication
+      summary: Create an access token
+      description: |
+        Exchange your `client_id` and `client_secret` for a short-lived bearer
+        token using the OAuth 2.0 client-credentials grant. Send the resulting
+        `access_token` in the `Authorization` header on every other request.
+      operationId: createToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              grant_type: client_credentials
+              client_id: ca_9f8b7a6c5d4e3f2a
+              client_secret: sk_test_51HbQ2aLkd9e8f7g6h5i4j3k2
+              scope: payments.write customers.read
+      responses:
+        '200':
+          description: A new access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig
+                token_type: Bearer
+                expires_in: 3600
+                scope: payments.write customers.read
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /customers:
+    get:
+      tags:
+        - Customers
+      summary: List customers
+      description: Returns a paginated list of customers, most recent first.
+      operationId: listCustomers
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - name: email
+          in: query
+          description: Filter by an exact, case-insensitive email match.
+          required: false
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: A paginated list of customers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      tags:
+        - Customers
+      summary: Create a customer
+      description: |
+        Creates a customer you can reuse across payments. The nested `address`
+        object is optional but recommended for fraud checks and receipts.
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+            example:
+              email: ada@example.com
+              name: Ada Lovelace
+              phone: '+2348012345678'
+              address:
+                line1: 12 Marina Road
+                city: Lagos
+                state: Lagos
+                postal_code: '101001'
+                country: NG
+              metadata:
+                internal_id: cust-4471
+      responses:
+        '201':
+          description: The newly created customer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /customers/{customerId}:
+    parameters:
+      - $ref: '#/components/parameters/CustomerId'
+    get:
+      tags:
+        - Customers
+      summary: Retrieve a customer
+      operationId: getCustomer
+      responses:
+        '200':
+          description: The requested customer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Customers
+      summary: Update a customer
+      description: Updates the provided fields only. Omitted fields are unchanged.
+      operationId: updateCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdate'
+            example:
+              phone: '+2348099999999'
+      responses:
+        '200':
+          description: The updated customer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags:
+        - Customers
+      summary: Delete a customer
+      operationId: deleteCustomer
+      responses:
+        '204':
+          description: The customer was deleted. No content is returned.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /payments:
+    get:
+      tags:
+        - Payments
+      summary: List payments
+      description: Returns a paginated list of payments, most recent first.
+      operationId: listPayments
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - name: customer_id
+          in: query
+          description: Only return payments for this customer.
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Only return payments with this status.
+          required: false
+          schema:
+            $ref: '#/components/schemas/PaymentStatus'
+      responses:
+        '200':
+          description: A paginated list of payments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      tags:
+        - Payments
+      summary: Create a payment
+      description: |
+        Charges a customer's payment method. This endpoint has a nested request
+        body: `amount` is an object, `payment_method` can be an inline card or a
+        stored payment-method reference, and `metadata` is free-form.
+
+        Set `capture_method` to `manual` to authorize now and capture later with
+        the capture endpoint; the payment will sit in `requires_capture` until
+        you do.
+      operationId: createPayment
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+            examples:
+              storedMethod:
+                summary: Charge a stored payment method
+                value:
+                  amount:
+                    value: 2000
+                    currency: USD
+                  customer_id: cus_8sJk2Pq1mN
+                  payment_method_id: pm_1Ld9xBke72
+                  description: 'Order #1138'
+                  capture_method: automatic
+                  metadata:
+                    order_id: '1138'
+              inlineCard:
+                summary: Charge a one-time card
+                value:
+                  amount:
+                    value: 500000
+                    currency: NGN
+                  customer_id: cus_8sJk2Pq1mN
+                  payment_method:
+                    type: card
+                    card:
+                      number: '4242424242424242'
+                      exp_month: 12
+                      exp_year: 2030
+                      cvc: '123'
+                  description: Invoice INV-0007
+                  capture_method: manual
+      responses:
+        '201':
+          description: The created payment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /payments/{paymentId}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    get:
+      tags:
+        - Payments
+      summary: Retrieve a payment
+      operationId: getPayment
+      responses:
+        '200':
+          description: The requested payment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /payments/{paymentId}/capture:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags:
+        - Payments
+      summary: Capture a payment
+      description: |
+        Captures a payment that was created with `capture_method: manual` and is
+        in the `requires_capture` status. You may capture the full amount or a
+        smaller amount; the remainder is released.
+      operationId: capturePayment
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: '#/components/schemas/Amount'
+            example:
+              amount:
+                value: 1500
+                currency: USD
+      responses:
+        '200':
+          description: The captured payment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /payments/{paymentId}/refunds:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    get:
+      tags:
+        - Refunds
+      summary: List refunds for a payment
+      operationId: listRefunds
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+      responses:
+        '200':
+          description: A paginated list of refunds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Refunds
+      summary: Refund a payment
+      description: |
+        Refunds a captured payment in full or in part. Omit `amount` to refund
+        the full remaining balance.
+      operationId: createRefund
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundCreate'
+            example:
+              amount:
+                value: 500
+                currency: USD
+              reason: requested_by_customer
+      responses:
+        '201':
+          description: The created refund.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /payment-methods:
+    post:
+      tags:
+        - Payment methods
+      summary: Create a payment method
+      description: Stores a reusable card for later payments.
+      operationId: createPaymentMethod
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentMethodCreate'
+            example:
+              type: card
+              card:
+                number: '4242424242424242'
+                exp_month: 12
+                exp_year: 2030
+                cvc: '123'
+              billing_address:
+                line1: 12 Marina Road
+                city: Lagos
+                country: NG
+      responses:
+        '201':
+          description: The stored payment method.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /payment-methods/{paymentMethodId}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentMethodId'
+    get:
+      tags:
+        - Payment methods
+      summary: Retrieve a payment method
+      operationId: getPaymentMethod
+      responses:
+        '200':
+          description: The requested payment method.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /webhook-endpoints:
+    get:
+      tags:
+        - Webhook endpoints
+      summary: List webhook endpoints
+      operationId: listWebhookEndpoints
+      responses:
+        '200':
+          description: A list of webhook endpoints.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    enum:
+                      - list
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookEndpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Webhook endpoints
+      summary: Create a webhook endpoint
+      description: Registers a URL that receives event notifications over HTTPS.
+      operationId: createWebhookEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEndpointCreate'
+            example:
+              url: https://example.com/webhooks/acme
+              enabled_events:
+                - payment.succeeded
+                - payment.failed
+                - refund.created
+      responses:
+        '201':
+          description: The created webhook endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /webhook-endpoints/{webhookEndpointId}:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+    delete:
+      tags:
+        - Webhook endpoints
+      summary: Delete a webhook endpoint
+      description: >-
+        Removes a webhook endpoint. Events stop being sent to its URL
+        immediately.
+      operationId: deleteWebhookEndpoint
+      responses:
+        '204':
+          description: The webhook endpoint was deleted. No content is returned.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Send the access token from `POST /auth/token` as a bearer token.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: A publishable or secret API key, for server-to-server calls.
+    oauth2:
+      type: oauth2
+      description: OAuth 2.0 client-credentials flow.
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.example-pay.com/v1/auth/token
+          scopes:
+            payments.read: Read payments and refunds.
+            payments.write: Create and capture payments and refunds.
+            customers.read: Read customers and payment methods.
+            customers.write: Create and update customers and payment methods.
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: The maximum number of items to return (1–100).
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    StartingAfter:
+      name: starting_after
+      in: query
+      description: A cursor (an object ID) for pagination. Returns items after it.
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        A unique key so a retried request is processed at most once. Reuse the
+        same key to safely retry a failed create.
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+    WebhookEndpointId:
+      name: webhookEndpointId
+      in: path
+      required: true
+      description: The webhook endpoint's unique identifier.
+      schema:
+        type: string
+        example: we_3Fh8sLq2Xc
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      description: The customer's unique identifier.
+      schema:
+        type: string
+        example: cus_8sJk2Pq1mN
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      description: The payment's unique identifier.
+      schema:
+        type: string
+        example: pay_3Nf2kL9aZ
+    PaymentMethodId:
+      name: paymentMethodId
+      in: path
+      required: true
+      description: The payment method's unique identifier.
+      schema:
+        type: string
+        example: pm_1Ld9xBke72
+  responses:
+    BadRequest:
+      description: The request was malformed or missing required fields.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: invalid_request_error
+              code: parameter_missing
+              message: Missing required parameter 'amount'.
+              param: amount
+              doc_url: https://docs.example-pay.com/errors/parameter_missing
+    Unauthorized:
+      description: Authentication failed or the token was missing or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: authentication_error
+              code: token_expired
+              message: The access token has expired.
+              doc_url: https://docs.example-pay.com/errors/token_expired
+    PaymentRequired:
+      description: The charge was declined by the issuer.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: card_error
+              code: card_declined
+              message: The card was declined.
+              param: payment_method
+              doc_url: https://docs.example-pay.com/errors/card_declined
+    Forbidden:
+      description: The token's scopes don't cover this action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: No resource exists with the given identifier.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: invalid_request_error
+              code: resource_missing
+              message: 'No such payment: pay_000000000.'
+              doc_url: https://docs.example-pay.com/errors/resource_missing
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: invalid_request_error
+              code: payment_not_capturable
+              message: This payment is already captured.
+              doc_url: https://docs.example-pay.com/errors/payment_not_capturable
+    UnprocessableEntity:
+      description: The request was well-formed but failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: validation_error
+              code: amount_too_small
+              message: The amount must be at least 50 (minor units).
+              param: amount.value
+              doc_url: https://docs.example-pay.com/errors/amount_too_small
+    TooManyRequests:
+      description: The rate limit was exceeded. Retry after the given delay.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              type: rate_limit_error
+              code: rate_limited
+              message: Too many requests. Retry after 2 seconds.
+              doc_url: https://docs.example-pay.com/errors/rate_limited
+  schemas:
+    TokenRequest:
+      type: object
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum:
+            - client_credentials
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        scope:
+          type: string
+          description: Space-delimited list of requested scopes.
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum:
+            - Bearer
+        expires_in:
+          type: integer
+          description: Lifetime of the token in seconds.
+        scope:
+          type: string
+    Address:
+      type: object
+      properties:
+        line1:
+          type: string
+        line2:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        country:
+          type: string
+          description: Two-letter ISO 3166-1 alpha-2 country code.
+          minLength: 2
+          maxLength: 2
+          example: NG
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          example: cus_8sJk2Pq1mN
+        object:
+          type: string
+          enum:
+            - customer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          $ref: '#/components/schemas/Address'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        livemode:
+          type: boolean
+        created:
+          type: string
+          format: date-time
+    CustomerCreate:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        address:
+          $ref: '#/components/schemas/Address'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    CustomerUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        address:
+          $ref: '#/components/schemas/Address'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    CustomerList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          nullable: true
+    Amount:
+      type: object
+      required:
+        - value
+        - currency
+      properties:
+        value:
+          type: integer
+          description: The amount in the currency's minor unit (e.g. cents).
+          minimum: 50
+          example: 2000
+        currency:
+          type: string
+          description: Three-letter ISO 4217 currency code.
+          minLength: 3
+          maxLength: 3
+          example: USD
+    CardInput:
+      type: object
+      required:
+        - number
+        - exp_month
+        - exp_year
+        - cvc
+      properties:
+        number:
+          type: string
+          description: The card number, digits only.
+          example: '4242424242424242'
+        exp_month:
+          type: integer
+          minimum: 1
+          maximum: 12
+        exp_year:
+          type: integer
+          example: 2030
+        cvc:
+          type: string
+          minLength: 3
+          maxLength: 4
+    CardMasked:
+      type: object
+      properties:
+        brand:
+          type: string
+          example: visa
+        last4:
+          type: string
+          example: '4242'
+        exp_month:
+          type: integer
+        exp_year:
+          type: integer
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+          example: pm_1Ld9xBke72
+        object:
+          type: string
+          enum:
+            - payment_method
+        type:
+          type: string
+          enum:
+            - card
+        card:
+          $ref: '#/components/schemas/CardMasked'
+        customer_id:
+          type: string
+          nullable: true
+        created:
+          type: string
+          format: date-time
+    PaymentMethodInput:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - card
+        card:
+          $ref: '#/components/schemas/CardInput'
+    PaymentMethodCreate:
+      allOf:
+        - $ref: '#/components/schemas/PaymentMethodInput'
+        - type: object
+          properties:
+            billing_address:
+              $ref: '#/components/schemas/Address'
+            customer_id:
+              type: string
+    PaymentStatus:
+      type: string
+      enum:
+        - requires_payment_method
+        - processing
+        - requires_capture
+        - succeeded
+        - failed
+        - canceled
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          example: pay_3Nf2kL9aZ
+        object:
+          type: string
+          enum:
+            - payment
+        amount:
+          $ref: '#/components/schemas/Amount'
+        amount_refunded:
+          $ref: '#/components/schemas/Amount'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        customer_id:
+          type: string
+        payment_method_id:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        capture_method:
+          type: string
+          enum:
+            - automatic
+            - manual
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        livemode:
+          type: boolean
+        created:
+          type: string
+          format: date-time
+    PaymentCreate:
+      type: object
+      required:
+        - amount
+        - customer_id
+      description: |
+        Supply either `payment_method_id` (a stored method) or an inline
+        `payment_method` object, not both.
+      properties:
+        amount:
+          $ref: '#/components/schemas/Amount'
+        customer_id:
+          type: string
+        payment_method_id:
+          type: string
+          description: The ID of a stored payment method.
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethodInput'
+        description:
+          type: string
+        capture_method:
+          type: string
+          enum:
+            - automatic
+            - manual
+          default: automatic
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    PaymentList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          nullable: true
+    Refund:
+      type: object
+      properties:
+        id:
+          type: string
+          example: re_7Hb3nQ2w
+        object:
+          type: string
+          enum:
+            - refund
+        payment_id:
+          type: string
+        amount:
+          $ref: '#/components/schemas/Amount'
+        reason:
+          type: string
+          enum:
+            - requested_by_customer
+            - duplicate
+            - fraudulent
+          nullable: true
+        status:
+          type: string
+          enum:
+            - pending
+            - succeeded
+            - failed
+        created:
+          type: string
+          format: date-time
+    RefundCreate:
+      type: object
+      properties:
+        amount:
+          $ref: '#/components/schemas/Amount'
+        reason:
+          type: string
+          enum:
+            - requested_by_customer
+            - duplicate
+            - fraudulent
+    RefundList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Refund'
+        has_more:
+          type: boolean
+    WebhookEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          example: we_2Kp9rT
+        object:
+          type: string
+          enum:
+            - webhook_endpoint
+        url:
+          type: string
+          format: uri
+        enabled_events:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - enabled
+            - disabled
+        created:
+          type: string
+          format: date-time
+    WebhookEndpointCreate:
+      type: object
+      required:
+        - url
+        - enabled_events
+      properties:
+        url:
+          type: string
+          format: uri
+        enabled_events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - payment.succeeded
+              - payment.failed
+              - payment.captured
+              - refund.created
+              - customer.created
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+          description: The broad category of error.
+          enum:
+            - invalid_request_error
+            - authentication_error
+            - card_error
+            - validation_error
+            - rate_limit_error
+            - api_error
+        code:
+          type: string
+          description: A short, machine-readable code for the specific error.
+        message:
+          type: string
+          description: >-
+            A human-readable explanation, safe to log but not to show raw to end
+            users.
+        param:
+          type: string
+          nullable: true
+          description: The request parameter the error relates to, if any.
+        doc_url:
+          type: string
+          format: uri
+          description: A link to documentation for this error.
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'

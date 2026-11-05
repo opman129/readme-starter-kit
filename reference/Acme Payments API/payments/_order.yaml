@@ -1,0 +1,4 @@
+- listpayments
+- createpayment
+- getpayment
+- capturepayment
